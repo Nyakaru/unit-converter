@@ -1,4 +1,6 @@
 import React from "react";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 // @mui
 import {
   Button,
@@ -10,30 +12,50 @@ import {
   Typography,
 } from "@mui/material";
 // @local
-import { unitTypes, allUnits } from "./constant"
+import { getData } from "../../utils/server";
+
+interface IPossibilities {
+  abbr: string;
+  measure: string;
+  system: string;
+  singular: string;
+  plural: string;
+}
 
 const UnitConverter = () => {
-    const [isSelected, setIsSelected] = React.useState(false);
-  const [units, setUnits] = React.useState(["Select Unit Type", ...unitTypes]);
-  const [unit, setUnit] = React.useState<
-    "Length" | "Temperature" | "Speed" | "Select Unit Type"
-  >("Select Unit Type");
-  const [measumerements, setMeasurements] = React.useState<string[]>([]);
+  const [isSelected, setIsSelected] = React.useState(false);
+  const [units, setUnits] = React.useState(["Select Unit Type"]);
+  const [unit, setUnit] = React.useState<string>("Select Unit Type");
+  const [measumerements, setMeasurements] = React.useState<IPossibilities[]>(
+    []
+  );
   const [convert, setConvert] = React.useState({
     fromUnit: "",
     toUnit: "",
-    number: "",
+    number: undefined,
   });
   const [result, setResult] = React.useState({
     result: "",
   });
 
-  const handleChangeUnitType = (e: { target: { value: any } }) => {
-    const selectedUnit = e.target.value as "Length" | "Temperature" | "Speed";
-    setUnits(unitTypes);
+  React.useEffect(() => {
+    const getInitialData = async () => {
+      const data = await getData("measures");
+      setUnits(["Select Unit Type", ...data]);
+      setIsSelected(false);
+    };
+    getInitialData();
+  }, []);
+
+  const handleChangeUnitType = async (e: { target: { value: any } }) => {
+    const selectedUnit = e.target.value as string;
+    const data: IPossibilities[] = await getData(
+      `possibilities?unit=${selectedUnit.toLowerCase()}`
+    );
+    setUnits(units.filter((item) => item !== "Select Unit Type"));
     setUnit(selectedUnit);
     setIsSelected(true);
-    setMeasurements(allUnits[selectedUnit]);
+    setMeasurements(data);
   };
 
   const handleChange = (e: {
@@ -41,7 +63,6 @@ const UnitConverter = () => {
     preventDefault: () => void;
   }) => {
     const { name, value } = e.target;
-
     e.preventDefault();
 
     setConvert({
@@ -50,32 +71,45 @@ const UnitConverter = () => {
     });
   };
 
-  const handleSubmit = () => {
-    setResult({
-      result: "200"
-    })
+  const handleSubmit = async () => {
+    const convertedValue = await getData(
+      `conversion?fromUnit=${convert.fromUnit}&toUnit=${convert.toUnit}&number=${convert.number}`
+    );
 
-  }
+    if (convertedValue["value"] != null) {
+      setResult({
+        result: convertedValue["value"],
+      });
+      toast.success("Success ✓");
+    }
+  };
 
   const handleReset = () => {
     setIsSelected(false);
     setUnit("Select Unit Type");
-    setUnits(["Select Unit Type", ...unitTypes])
-    setMeasurements([])
+    const newData = units.includes("Select Unit Type")
+      ? [...units]
+      : ["Select Unit Type", ...units];
+    setUnits(newData);
+    setMeasurements([]);
     setConvert({
       fromUnit: "",
       toUnit: "",
-      number: "",
-    })
-
-  }
+      number: "" as unknown as undefined,
+    });
+    setResult({
+      result: "",
+    });
+  };
 
   const disableSubmit =
-    Number(convert.number) >= 1 &&
+    convert.number !== "" &&
     convert.toUnit !== "Select To Unit" &&
-    convert.toUnit !== "Select Unit First" &&
+    convert.toUnit !== "" &&
+    convert.toUnit !== "Select Unit Type First" &&
     convert.fromUnit !== "Select From Unit" &&
-    convert.fromUnit !== "Select Unit First";
+    convert.fromUnit !== "" &&
+    convert.fromUnit !== "Select Unit Type First";
 
   return (
     <FormControl
@@ -87,6 +121,7 @@ const UnitConverter = () => {
         width: "100%",
       }}
     >
+      <ToastContainer />
       {/* Unit Type */}
       <Typography variant="h5" mb={2}>
         Unit Converter
@@ -101,7 +136,7 @@ const UnitConverter = () => {
           {units.map((id) => {
             return (
               <option key={id} id={id} value={id}>
-                {id}
+                {id.charAt(0).toUpperCase() + id.slice(1).toLowerCase()}
               </option>
             );
           })}
@@ -118,10 +153,10 @@ const UnitConverter = () => {
             <option>
               {isSelected ? "Select From Unit" : "Select Unit Type First"}
             </option>
-            {measumerements.map((id) => {
+            {measumerements.map((item) => {
               return (
-                <option key={id} id={id} value={id}>
-                  {id}
+                <option key={item.abbr} id={item.abbr} value={item.abbr}>
+                  {item.plural}
                 </option>
               );
             })}
@@ -137,10 +172,10 @@ const UnitConverter = () => {
             <option>
               {isSelected ? "Select To Unit" : "Select Unit Type First"}
             </option>
-            {measumerements.map((id) => {
+            {measumerements.map((item) => {
               return (
-                <option key={id} id={id} value={id}>
-                  {id}
+                <option key={item.abbr} id={item.abbr} value={item.abbr}>
+                  {item.plural}
                 </option>
               );
             })}
@@ -151,32 +186,45 @@ const UnitConverter = () => {
           <TextField
             name="number"
             onChange={handleChange}
-            placeholder="Enter Whole Number"
+            placeholder="Enter Number"
             value={convert.number}
           />
           {/* RESULT */}
           <TextField
-            value={Number(convert.number) > 0.5 ? result.result : ""}
+            value={result.result}
             disabled
             placeholder="Result"
             label="Result"
-            sx={{ '& .css-1t8l2tu-MuiInputBase-input-MuiOutlinedInput-input.Mui-disabled': {
-              backgroundColor: '#F0F8FF'
-            }}}
+            sx={{
+              "& .css-1t8l2tu-MuiInputBase-input-MuiOutlinedInput-input.Mui-disabled":
+                {
+                  backgroundColor: "#F0F8FF",
+                },
+            }}
           />
         </Stack>
-          {/* ACTIONS */}
+        {/* ACTIONS */}
         <Stack direction="row" spacing={2}>
-          <Button variant="contained" fullWidth disabled={!disableSubmit} onClick={handleSubmit}>
+          <Button
+            variant="contained"
+            fullWidth
+            disabled={!disableSubmit}
+            onClick={handleSubmit}
+          >
             Submit
           </Button>
-          <Button variant="contained" fullWidth color="secondary" onClick={handleReset}>
+          <Button
+            variant="contained"
+            fullWidth
+            color="secondary"
+            onClick={handleReset}
+          >
             Reset
           </Button>
         </Stack>
       </Stack>
     </FormControl>
   );
-}
+};
 
 export default UnitConverter;
